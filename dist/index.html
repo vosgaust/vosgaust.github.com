@@ -1,0 +1,91 @@
+<html>
+  <head>
+    <title>Test Brain</title>
+  </head>
+  <style>
+  * {
+  	margin: 0;
+  	padding: 0;
+  }
+
+  body, html {
+  	height: 100%;
+  }
+
+  #whiteboard {
+  	cursor: crosshair;
+    position: fixed;
+  }
+  </style>
+  <body>
+    <script src="shared_memory.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/1.7.19/fabric.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsondiffpatch/0.2.5/jsondiffpatch.min.js"></script>
+    <script>
+      var SHM = new SharedMemory();
+    </script>
+    <canvas id="whiteboard"></canvas>
+    <script>
+    var whiteboard;
+    var actualState = {};
+    var shouldSend = true;
+
+    function getRandomColor() {
+      var letters = '0123456789ABCDEF';
+      var color = '#';
+      for (var i = 0; i < 6; i++) {
+        color += letters[Math.floor(Math.random() * 16)];
+      }
+      return color;
+    }
+
+    window.onload = function() {
+    	var myCanvas = document.getElementById("whiteboard");
+    	var ctx = myCanvas.getContext("2d");
+
+      var _onNewState = function (change) {
+        actualState = jsondiffpatch.patch(actualState, change.value);
+        shouldSend = false;
+        whiteboard.loadFromJSON(actualState, whiteboard.renderAll.bind(whiteboard));
+      };
+
+      SHM.initEmptyChunk('room', 'whiteboard');
+      SHM.watchValue('room', 'whiteboard', 'state', _onNewState)
+
+        // Fill Window Width and Height
+        myCanvas.width = window.innerWidth;
+    	myCanvas.height = window.innerHeight;
+
+    	// Set Background Color
+        ctx.fillStyle="#fff";
+        ctx.fillRect(0,0,myCanvas.width,myCanvas.height);
+        whiteboard = new fabric.Canvas(myCanvas);
+        whiteboard.isDrawingMode = true;
+        whiteboard.freeDrawingBrush.color = getRandomColor();
+
+        var _onCanvasChange = function () {
+          if(shouldSend) {
+            var newState = whiteboard.toJSON();
+            var deltaChanges = jsondiffpatch.diff(actualState, newState)
+            actualState = newState;
+            SHM.setValue('room', 'whiteboard', 'state', deltaChanges);
+          } else {
+            setTimeout(function () {
+              shouldSend = true;
+            }, 200);
+          }
+        }
+
+        whiteboard.on('object:added', _onCanvasChange);
+        whiteboard.on('object:removed', _onCanvasChange);
+        whiteboard.on('object:modified', _onCanvasChange);
+        whiteboard.on('object:rotating', _onCanvasChange);
+        whiteboard.on('object:scaling', _onCanvasChange);
+        whiteboard.on('object:moving', _onCanvasChange);
+
+    };
+
+
+    </script>
+  </body>
+</html>
